@@ -1,34 +1,55 @@
-var builder = WebApplication.CreateBuilder(args);
+using Microsoft.EntityFrameworkCore;
+using ToDoApi.Data;
+using ToDoApi.Models;
 
-// Add services to the container.
+var builder = WebApplication.CreateBuilder(args);
+var SqliteConnection = builder.Configuration.GetConnectionString("SqliteConnection");
+builder.Services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(SqliteConnection));
+
+
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapGet("api/todo", async (AppDbContext context) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateTime.Now.AddDays(index),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+    var items = await context.ToDoes.ToListAsync();
+    return Results.Ok(items);
 });
 
-app.Run();
-
-internal record WeatherForecast(DateTime Date, int TemperatureC, string? Summary)
+app.MapPost("api/todo", async (AppDbContext context, ToDo toDo) =>
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+    await context.AddAsync(toDo);
+    await context.SaveChangesAsync();
+    return Results.Created($"api/todo/{toDo.Id}", toDo);
+});
+
+app.MapPut("api/todo/{id}", async (AppDbContext context, int id, ToDo toDo) =>
+{
+    var toDoModel = await context.ToDoes.FirstOrDefaultAsync(t=> t.Id == id);
+    if (toDo == null)
+    {
+        return Results.NotFound();
+    }
+    toDoModel.ToDoName=toDo.ToDoName;
+    await context.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+app.MapDelete("api/todo/{id}", async (AppDbContext context, int id) =>
+{
+    var toDoModel = await context.ToDoes.FirstOrDefaultAsync(t => t.Id == id);
+    if (toDoModel == null)
+    {
+        return Results.NotFound();
+    }
+   
+    context.ToDoes.Remove(toDoModel);
+    await context.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+
+app.Run();
